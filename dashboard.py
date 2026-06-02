@@ -11,7 +11,8 @@ import streamlit as st
 import requests
 import sys
 import os
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
+import pytz
 
 # ── Path setup ─────────────────────────────────────────────────────────────────
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -198,7 +199,8 @@ with st.sidebar:
                         index=sorted(CITIES.keys()).index("New Delhi"))
     st.markdown("---")
     st.markdown("### 📅 Date Range")
-    today = date.today()
+    IST = pytz.timezone("Asia/Kolkata")
+    today = datetime.now(IST).date()
     c1,c2 = st.columns(2)
     with c1: start_date = st.date_input("From", today)
     with c2: end_date   = st.date_input("To",   today+timedelta(days=30))
@@ -214,7 +216,7 @@ with st.sidebar:
     st.success("✅ Self-contained mode")
     st.markdown(
         f"<div style='color:rgba(255,255,255,.5);font-size:11px'>"
-        f"📦 {len(EVENTS_DB)} events in DB<br>Today: {today.strftime('%d %b %Y')}</div>",
+        f"📦 {len(EVENTS_DB)} events in DB<br>IST: {datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%d %b %Y %I:%M %p")}<br>Date: {today.strftime('%d %b %Y')}</div>",
         unsafe_allow_html=True)
 
 # ── Fetch data ─────────────────────────────────────────────────────────────────
