@@ -324,6 +324,26 @@ else:
 
 # ── EVENTS ─────────────────────────────────────────────────────────────────────
 st.markdown('<div class="section-hdr">📅 Events & Holidays</div>', unsafe_allow_html=True)
+
+try:
+    from utils.restaurant_impact import EVENT_MULTIPLIERS as _EV_MULT
+    _RT_AVAIL = True
+except:
+    _RT_AVAIL = False
+
+def _rt_badges(ev):
+    if not _RT_AVAIL: return ""
+    cat = ev.get("category",""); sub = ev.get("subcategory","*")
+    cm  = _EV_MULT.get(cat,{}); sm = cm.get(sub, cm.get("*",{}))
+    parts = []
+    for rt,ico in [("QSR","🍔"),("Dine-in","🍽️"),("PBCL","🍺")]:
+        pct = round((sm.get(rt,1.0)-1)*100)
+        if pct>0:   label,bg,fc = f"↑ +{pct}%","rgba(67,160,71,.25)","#81C784"
+        elif pct<0: label,bg,fc = f"↓ {pct}%","rgba(239,83,80,.25)","#EF9A9A"
+        else:       label,bg,fc = "→ 0%","rgba(120,144,156,.2)","#90A4AE"
+        parts.append(f"<span style='background:{bg};color:{fc};border:1px solid {fc}55;border-radius:10px;padding:2px 8px;font-size:10.5px;font-weight:500;white-space:nowrap'>{ico} {rt} {label}</span>")
+    return "<div style='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px'>"+"".join(parts)+"</div>"
+
 events = get_events(start_date.isoformat(), end_date.isoformat(),
                     city=city, category=selected_cat)
 if events:
@@ -341,7 +361,8 @@ if events:
         ed    = ev.get("end_date","")
         ds    = sd if sd==ed else f"{sd} → {ed}"
         desc  = ev.get("description","")
-        dh    = f"<div style='font-size:11px;opacity:.5;margin-top:5px'>{desc[:80]}...</div>" if desc else ""
+        dh    = f"<div style='font-size:11.5px;opacity:.65;margin-top:8px;line-height:1.6'>{desc}</div>" if desc else ""
+        badges = _rt_badges(ev)
         with col:
             st.markdown(f"""
             <div class="event-card" style="background:{color}22;border-left-color:{color}">
@@ -355,6 +376,7 @@ if events:
                   margin-left:8px">{cat}</span>
               </div>
               <div style="font-size:11px;color:{impc};margin-top:6px;font-weight:500">{impl}</div>
+              {badges}
               {dh}
             </div>""", unsafe_allow_html=True)
 else:
