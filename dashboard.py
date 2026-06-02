@@ -331,103 +331,89 @@ try:
 except:
     _RT_AVAIL = False
 
-# Build a date → weather lookup from already-fetched data
-_weather_map = {}
-for _d in hist_data:
-    if _d.get("date") and _d.get("temp_max_c") is not None:
-        _weather_map[_d["date"]] = _d
-for _d in forecast:
-    if _d.get("date") and _d.get("temp_max_c") is not None:
-        _weather_map[_d["date"]] = _d
+# Build weather lookup from already-fetched forecast + historical
+_wmap = {}
+for _d in (hist_data or []):
+    if _d.get("date"): _wmap[_d["date"]] = _d
+for _d in (forecast or []):
+    if _d.get("date"): _wmap[_d["date"]] = _d
 
-WMO_LABEL_MINI = {
-    0:"☀️ Clear",1:"🌤 Mainly Clear",2:"⛅ Partly Cloudy",3:"☁️ Overcast",
-    45:"🌫 Fog",51:"🌦 Drizzle",53:"🌧 Drizzle",55:"🌧 Drizzle",
-    61:"🌧 Light Rain",63:"🌧 Rain",65:"🌧 Heavy Rain",
-    80:"🌦 Showers",81:"🌧 Showers",82:"⛈ Heavy Showers",
-    95:"⛈ Thunderstorm",96:"⛈ Thunderstorm",99:"⛈ Severe Storm",
-}
+def _factor_badge(text, bg, fc):
+    return (f"<span style='background:{bg};color:{fc};border:1px solid {fc}44;"
+            f"border-radius:8px;padding:3px 9px;font-size:10.5px;font-weight:500;"
+            f"white-space:nowrap;display:inline-block'>{text}</span>")
 
-def _weather_badge_for_event(ev):
-    """Build weather info strip for dates covered by this event."""
+def _all_factors(ev):
     from datetime import date as _dt, timedelta as _td
-    try:
-        ev_s = _dt.fromisoformat(ev["start_date"])
-        ev_e = _dt.fromisoformat(ev["end_date"])
-    except:
-        return ""
-    # Collect weather for each day of the event
+    ev_s = _dt.fromisoformat(ev["start_date"])
+    ev_e = _dt.fromisoformat(ev["end_date"])
+
+    # ── Row 1: Restaurant impact ──────────────────────────────────────────────
+    cat = ev.get("category",""); sub = ev.get("subcategory","*")
+    cm  = _EV_MULT.get(cat,{}) if _RT_AVAIL else {}
+    sm  = cm.get(sub, cm.get("*",{}))
+    rt_badges = []
+    for rt,ico in [("QSR","🍔"),("Dine-in","🍽️"),("PBCL","🍺")]:
+        pct = round((sm.get(rt,1.0)-1)*100)
+        if pct>0:   txt,bg,fc = f"{ico} {rt} ↑+{pct}%","rgba(67,160,71,.25)","#81C784"
+        elif pct<0: txt,bg,fc = f"{ico} {rt} ↓{pct}%","rgba(239,83,80,.25)","#EF9A9A"
+        else:       txt,bg,fc = f"{ico} {rt} →0%","rgba(120,144,156,.18)","#90A4AE"
+        rt_badges.append(_factor_badge(txt,bg,fc))
+
+    # ── Row 2: Weather factors ────────────────────────────────────────────────
+    wx_badges = []
     temps=[]; precips=[]; codes=[]
     cur = ev_s
     while cur <= ev_e:
-        w = _weather_map.get(cur.isoformat(),{})
-        if w.get("temp_max_c") is not None:
-            temps.append(w["temp_max_c"])
-        if w.get("precipitation_mm") is not None:
-            precips.append(w["precipitation_mm"])
-        if w.get("weather_code") is not None:
-            codes.append(w["weather_code"])
+        w = _wmap.get(cur.isoformat(),{})
+        if w.get("temp_max_c") is not None: temps.append(w["temp_max_c"])
+        if w.get("precipitation_mm") is not None: precips.append(w["precipitation_mm"] or 0)
+        if w.get("weather_code") is not None: codes.append(w["weather_code"])
         cur += _td(days=1)
-    if not temps and not codes:
-        return ""
 
-    parts = []
-    # Temperature
     if temps:
-        avg_t = sum(temps)/len(temps)
-        max_t = max(temps)
-        if max_t >= 44:
-            tc,tl = "#EF9A9A","🌡️ Extreme Heat"
-        elif max_t >= 40:
-            tc,tl = "#FFCC80","🌡️ High Heat"
-        elif max_t <= 15:
-            tc,tl = "#90CAF9","🌡️ Cool"
-        else:
-            tc,tl = "#A5D6A7","🌡️ Moderate"
-        parts.append(f"<span style='color:{tc};font-size:10.5px'>{tl} {avg_t:.0f}°C avg</span>")
-    # Precipitation
+        mx = max(temps); av = sum(temps)/len(temps)
+        if mx>=44:    wx_badges.append(_factor_badge(f"🌡️ Extreme Heat {mx:.0f}°C — footfall ↓↓","rgba(183,28,28,.3)","#EF9A9A"))
+        elif mx>=40:  wx_badges.append(_factor_badge(f"☀️ Hot {mx:.0f}°C — outdoor footfall ↓","rgba(230,81,0,.25)","#FFCC80"))
+        elif mx>=30:  wx_badges.append(_factor_badge(f"🌤️ Warm {mx:.0f}°C — normal footfall","rgba(46,125,50,.2)","#A5D6A7"))
+        else:         wx_badges.append(_factor_badge(f"🌥️ Mild {mx:.0f}°C — good for dining","rgba(21,101,192,.2)","#90CAF9"))
     if precips:
         total_p = sum(precips)
-        if total_p >= 20:
-            parts.append("<span style='color:#90CAF9;font-size:10.5px'>🌧 Heavy Rain</span>")
-        elif total_p >= 5:
-            parts.append("<span style='color:#B3E5FC;font-size:10.5px'>🌦 Rain</span>")
-        elif total_p > 0:
-            parts.append("<span style='color:#E1F5FE;font-size:10.5px'>💧 Light Drizzle</span>")
-        else:
-            parts.append("<span style='color:#A5D6A7;font-size:10.5px'>☀️ Dry</span>")
-    # Most frequent weather code
+        if total_p>=25:   wx_badges.append(_factor_badge("🌧️ Heavy Rain — delivery ↑↑ dine-in ↓↓","rgba(13,71,161,.3)","#90CAF9"))
+        elif total_p>=8:  wx_badges.append(_factor_badge("🌦️ Rain — delivery ↑ dine-in ↓","rgba(21,101,192,.25)","#B3E5FC"))
+        elif total_p>=2:  wx_badges.append(_factor_badge("💧 Light Drizzle — minor impact","rgba(21,101,192,.15)","#E1F5FE"))
+        else:             wx_badges.append(_factor_badge("☀️ Dry weather","rgba(46,125,50,.15)","#C8E6C9"))
     if codes:
         from collections import Counter
-        common_code = Counter(codes).most_common(1)[0][0]
-        wlabel = WMO_LABEL_MINI.get(common_code,"")
-        if wlabel and not any(wlabel.split()[1] in p for p in parts if len(p)>20):
-            parts.append(f"<span style='color:rgba(255,255,255,.5);font-size:10.5px'>{wlabel}</span>")
+        mc = Counter(codes).most_common(1)[0][0]
+        if mc in (95,96,99): wx_badges.append(_factor_badge("⛈️ Thunderstorms — severe suppression","rgba(183,28,28,.35)","#EF5350"))
+    if not wx_badges:
+        wx_badges.append(_factor_badge("📅 Future dates — forecast not available yet","rgba(120,144,156,.15)","#78909C"))
 
-    if not parts:
-        return ""
-    return (
-        "<div style='display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;"
-        "padding:6px 10px;background:rgba(255,255,255,.06);border-radius:8px;"
-        "align-items:center'>"
-        "<span style='font-size:10px;font-weight:600;opacity:.5;text-transform:uppercase;"
-        "letter-spacing:.05em'>Weather</span>"
-        + " &nbsp;·&nbsp; ".join(parts)
-        + "</div>"
-    )
+    # ── Row 3: Weekday / Weekend ──────────────────────────────────────────────
+    days_names = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+    all_days=[]; cur=ev_s
+    while cur<=ev_e: all_days.append(cur); cur+=_td(days=1)
+    wkdays=[d for d in all_days if d.weekday()<5]
+    wkends=[d for d in all_days if d.weekday()>=5]
+    day_badges=[]
+    if wkdays:
+        names=", ".join(days_names[d.weekday()] for d in wkdays[:3])+("…" if len(wkdays)>3 else "")
+        day_badges.append(_factor_badge(f"📆 {len(wkdays)} Weekday{'s' if len(wkdays)>1 else ''} ({names}) — normal base","rgba(21,101,192,.2)","#90CAF9"))
+    if wkends:
+        names=", ".join(days_names[d.weekday()] for d in wkends)
+        day_badges.append(_factor_badge(f"🎉 {len(wkends)} Weekend day{'s' if len(wkends)>1 else ''} ({names}) — higher base demand","rgba(255,143,0,.25)","#FFD54F"))
+    if not day_badges:
+        day_badges.append(_factor_badge("📅 Single day event","rgba(120,144,156,.15)","#78909C"))
 
-def _rt_badges(ev):
-    if not _RT_AVAIL: return ""
-    cat = ev.get("category",""); sub = ev.get("subcategory","*")
-    cm  = _EV_MULT.get(cat,{}); sm = cm.get(sub, cm.get("*",{}))
-    parts = []
-    for rt,ico in [("QSR","🍔"),("Dine-in","🍽️"),("PBCL","🍺")]:
-        pct = round((sm.get(rt,1.0)-1)*100)
-        if pct>0:   label,bg,fc = f"↑ +{pct}%","rgba(67,160,71,.25)","#81C784"
-        elif pct<0: label,bg,fc = f"↓ {pct}%","rgba(239,83,80,.25)","#EF9A9A"
-        else:       label,bg,fc = "→ 0%","rgba(120,144,156,.2)","#90A4AE"
-        parts.append(f"<span style='background:{bg};color:{fc};border:1px solid {fc}55;border-radius:10px;padding:2px 8px;font-size:10.5px;font-weight:500;white-space:nowrap'>{ico} {rt} {label}</span>")
-    return "<div style='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px'>"+"".join(parts)+"</div>"
+    def _row(label, badges):
+        inner = " ".join(badges)
+        return (f"<div style='margin-top:8px'>"
+                f"<div style='font-size:9.5px;font-weight:700;opacity:.4;letter-spacing:.08em;"
+                f"text-transform:uppercase;margin-bottom:5px'>{label}</div>"
+                f"<div style='display:flex;gap:5px;flex-wrap:wrap'>{inner}</div></div>")
+
+    return _row("🍽️ Restaurant Impact", rt_badges) + _row("🌤️ Weather", wx_badges) + _row("📅 Day Type", day_badges)
 
 events = get_events(start_date.isoformat(), end_date.isoformat(),
                     city=city, category=selected_cat)
@@ -446,9 +432,8 @@ if events:
         ed    = ev.get("end_date","")
         ds    = sd if sd==ed else f"{sd} → {ed}"
         desc  = ev.get("description","")
-        dh    = f"<div style='font-size:11.5px;opacity:.65;margin-top:8px;line-height:1.6'>{desc}</div>" if desc else ""
-        badges  = _rt_badges(ev)
-        weather_strip = _weather_badge_for_event(ev)
+        dh    = f"<div style='font-size:11.5px;opacity:.6;margin-top:8px;line-height:1.6;border-top:1px solid rgba(255,255,255,.08);padding-top:8px'>{desc}</div>" if desc else ""
+        factors = _all_factors(ev)
         with col:
             st.markdown(f"""
             <div class="event-card" style="background:{color}22;border-left-color:{color}">
@@ -461,9 +446,8 @@ if events:
                   font-size:10px;padding:2px 8px;border-radius:10px;white-space:nowrap;
                   margin-left:8px">{cat}</span>
               </div>
-              <div style="font-size:11px;color:{impc};margin-top:6px;font-weight:500">{impl}</div>
-              {badges}
-              {weather_strip}
+              <div style="font-size:11px;color:{impc};margin-top:6px;font-weight:600">{impl}</div>
+              {factors}
               {dh}
             </div>""", unsafe_allow_html=True)
 else:
@@ -472,7 +456,6 @@ else:
       text-align:center;color:rgba(255,255,255,.4)">
       📭 No events found for the selected filters and date range.
     </div>""", unsafe_allow_html=True)
-
 # ── HISTORICAL CHART ───────────────────────────────────────────────────────────
 st.markdown('<div class="section-hdr">📈 Historical Temperature — Last 30 Days</div>',
             unsafe_allow_html=True)
