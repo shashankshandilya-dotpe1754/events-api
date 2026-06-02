@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-API_BASE = "http://localhost:8000"
+API_BASE = "main.py"
 
 # ── WMO weather code → emoji + label ─────────────────────────────────────────
 WMO_EMOJI = {
