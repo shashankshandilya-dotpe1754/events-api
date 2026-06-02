@@ -331,6 +331,91 @@ try:
 except:
     _RT_AVAIL = False
 
+# Build a date → weather lookup from already-fetched data
+_weather_map = {}
+for _d in hist_data:
+    if _d.get("date") and _d.get("temp_max_c") is not None:
+        _weather_map[_d["date"]] = _d
+for _d in forecast:
+    if _d.get("date") and _d.get("temp_max_c") is not None:
+        _weather_map[_d["date"]] = _d
+
+WMO_LABEL_MINI = {
+    0:"☀️ Clear",1:"🌤 Mainly Clear",2:"⛅ Partly Cloudy",3:"☁️ Overcast",
+    45:"🌫 Fog",51:"🌦 Drizzle",53:"🌧 Drizzle",55:"🌧 Drizzle",
+    61:"🌧 Light Rain",63:"🌧 Rain",65:"🌧 Heavy Rain",
+    80:"🌦 Showers",81:"🌧 Showers",82:"⛈ Heavy Showers",
+    95:"⛈ Thunderstorm",96:"⛈ Thunderstorm",99:"⛈ Severe Storm",
+}
+
+def _weather_badge_for_event(ev):
+    """Build weather info strip for dates covered by this event."""
+    from datetime import date as _dt, timedelta as _td
+    try:
+        ev_s = _dt.fromisoformat(ev["start_date"])
+        ev_e = _dt.fromisoformat(ev["end_date"])
+    except:
+        return ""
+    # Collect weather for each day of the event
+    temps=[]; precips=[]; codes=[]
+    cur = ev_s
+    while cur <= ev_e:
+        w = _weather_map.get(cur.isoformat(),{})
+        if w.get("temp_max_c") is not None:
+            temps.append(w["temp_max_c"])
+        if w.get("precipitation_mm") is not None:
+            precips.append(w["precipitation_mm"])
+        if w.get("weather_code") is not None:
+            codes.append(w["weather_code"])
+        cur += _td(days=1)
+    if not temps and not codes:
+        return ""
+
+    parts = []
+    # Temperature
+    if temps:
+        avg_t = sum(temps)/len(temps)
+        max_t = max(temps)
+        if max_t >= 44:
+            tc,tl = "#EF9A9A","🌡️ Extreme Heat"
+        elif max_t >= 40:
+            tc,tl = "#FFCC80","🌡️ High Heat"
+        elif max_t <= 15:
+            tc,tl = "#90CAF9","🌡️ Cool"
+        else:
+            tc,tl = "#A5D6A7","🌡️ Moderate"
+        parts.append(f"<span style='color:{tc};font-size:10.5px'>{tl} {avg_t:.0f}°C avg</span>")
+    # Precipitation
+    if precips:
+        total_p = sum(precips)
+        if total_p >= 20:
+            parts.append("<span style='color:#90CAF9;font-size:10.5px'>🌧 Heavy Rain</span>")
+        elif total_p >= 5:
+            parts.append("<span style='color:#B3E5FC;font-size:10.5px'>🌦 Rain</span>")
+        elif total_p > 0:
+            parts.append("<span style='color:#E1F5FE;font-size:10.5px'>💧 Light Drizzle</span>")
+        else:
+            parts.append("<span style='color:#A5D6A7;font-size:10.5px'>☀️ Dry</span>")
+    # Most frequent weather code
+    if codes:
+        from collections import Counter
+        common_code = Counter(codes).most_common(1)[0][0]
+        wlabel = WMO_LABEL_MINI.get(common_code,"")
+        if wlabel and not any(wlabel.split()[1] in p for p in parts if len(p)>20):
+            parts.append(f"<span style='color:rgba(255,255,255,.5);font-size:10.5px'>{wlabel}</span>")
+
+    if not parts:
+        return ""
+    return (
+        "<div style='display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;"
+        "padding:6px 10px;background:rgba(255,255,255,.06);border-radius:8px;"
+        "align-items:center'>"
+        "<span style='font-size:10px;font-weight:600;opacity:.5;text-transform:uppercase;"
+        "letter-spacing:.05em'>Weather</span>"
+        + " &nbsp;·&nbsp; ".join(parts)
+        + "</div>"
+    )
+
 def _rt_badges(ev):
     if not _RT_AVAIL: return ""
     cat = ev.get("category",""); sub = ev.get("subcategory","*")
@@ -362,7 +447,8 @@ if events:
         ds    = sd if sd==ed else f"{sd} → {ed}"
         desc  = ev.get("description","")
         dh    = f"<div style='font-size:11.5px;opacity:.65;margin-top:8px;line-height:1.6'>{desc}</div>" if desc else ""
-        badges = _rt_badges(ev)
+        badges  = _rt_badges(ev)
+        weather_strip = _weather_badge_for_event(ev)
         with col:
             st.markdown(f"""
             <div class="event-card" style="background:{color}22;border-left-color:{color}">
@@ -377,6 +463,7 @@ if events:
               </div>
               <div style="font-size:11px;color:{impc};margin-top:6px;font-weight:500">{impl}</div>
               {badges}
+              {weather_strip}
               {dh}
             </div>""", unsafe_allow_html=True)
 else:
