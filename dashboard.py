@@ -72,7 +72,7 @@ def get_historical(city, days_back=30):
     if not coords: return []
     today    = date.today()
     start_dt = (today - timedelta(days=days_back)).isoformat()
-    end_dt   = (today - timedelta(days=1)).isoformat()
+    end_dt   = today.isoformat()          # include today so archive covers it
     try:
         r = requests.get(ARCHIVE_URL, params={
             "latitude": coords["lat"], "longitude": coords["lon"],
@@ -220,9 +220,20 @@ with st.sidebar:
 # ── Fetch data ─────────────────────────────────────────────────────────────────
 with st.spinner("Loading weather & events..."):
     forecast  = get_forecast(city)
+    hist_data = get_historical(city, days_back=30)
     today_ctx = get_today_context(city)
 
-today_w = next((f for f in forecast if f.get("date")==today.isoformat()), {})
+# Try forecast first, fall back to archive if today missing
+today_w = next((f for f in forecast if f.get("date") == today.isoformat()), {})
+if not today_w or today_w.get("temp_max_c") is None:
+    # Use archive data for today (more reliable when it's already late IST)
+    arch_today = next((h for h in hist_data if h.get("date") == today.isoformat()), {})
+    if arch_today.get("temp_max_c") is not None:
+        today_w = arch_today
+        # Add rain probability from first forecast day if available
+        if forecast:
+            first_f = forecast[0]
+            today_w["rain_probability_pct"] = first_f.get("rain_probability_pct", "--")
 
 # ── HERO + CONTEXT ─────────────────────────────────────────────────────────────
 col_hero, col_ctx = st.columns([1.4,1], gap="large")
@@ -354,7 +365,7 @@ else:
 # ── HISTORICAL CHART ───────────────────────────────────────────────────────────
 st.markdown('<div class="section-hdr">📈 Historical Temperature — Last 30 Days</div>',
             unsafe_allow_html=True)
-hist = get_historical(city, days_back=30)
+hist = hist_data  # already fetched above
 if hist:
     try:
         import plotly.graph_objects as go
