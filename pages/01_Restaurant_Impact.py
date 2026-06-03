@@ -91,28 +91,65 @@ with st.sidebar:
 # ── Weather fetch ──────────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_weather(city, start_str, end_str):
+    """
+    Fetch weather for the full date range.
+    - Historical dates  → Open-Meteo archive API (actual observed data)
+    - Today + future    → Open-Meteo forecast API
+    For forecast dates, precipitation_sum can be None — we use
+    precipitation_probability_max to estimate mm when sum is missing.
+    """
     import requests; coords=CITIES[city]; temp_map={}
     try:
-        hist_end=min(date.fromisoformat(end_str), today-timedelta(days=1))
-        if date.fromisoformat(start_str)<=hist_end:
-            r=requests.get("https://archive-api.open-meteo.com/v1/archive",params={
-                "latitude":coords["lat"],"longitude":coords["lon"],
-                "daily":["temperature_2m_max","precipitation_sum","weathercode"],
-                "start_date":start_str,"end_date":hist_end.isoformat(),"timezone":"Asia/Kolkata"},timeout=12)
-            if r.status_code==200:
-                d=r.json()["daily"]
-                for i in range(len(d["time"])): temp_map[d["time"][i]]={"temp_max_c":d["temperature_2m_max"][i],"precipitation_mm":d["precipitation_sum"][i],"weather_code":d["weathercode"][i]}
-        fcst_start=max(date.fromisoformat(start_str),today)
-        if fcst_start<=date.fromisoformat(end_str):
-            days=(date.fromisoformat(end_str)-today).days+2
-            r2=requests.get("https://api.open-meteo.com/v1/forecast",params={
-                "latitude":coords["lat"],"longitude":coords["lon"],
-                "daily":["temperature_2m_max","precipitation_sum","weathercode"],
-                "forecast_days":min(days,16),"timezone":"Asia/Kolkata"},timeout=10)
-            if r2.status_code==200:
-                d2=r2.json()["daily"]
-                for i in range(len(d2["time"])): temp_map[d2["time"][i]]={"temp_max_c":d2["temperature_2m_max"][i],"precipitation_mm":d2["precipitation_sum"][i],"weather_code":d2["weathercode"][i]}
-    except: pass
+        # ── Historical (up to yesterday) ──────────────────────────────────────
+        hist_end = min(date.fromisoformat(end_str), today - timedelta(days=1))
+        if date.fromisoformat(start_str) <= hist_end:
+            r = requests.get("https://archive-api.open-meteo.com/v1/archive", params={
+                "latitude": coords["lat"], "longitude": coords["lon"],
+                "daily": ["temperature_2m_max","temperature_2m_min",
+                          "precipitation_sum","weathercode"],
+                "start_date": start_str, "end_date": hist_end.isoformat(),
+                "timezone": "Asia/Kolkata"}, timeout=12)
+            if r.status_code == 200:
+                d = r.json()["daily"]
+                for i in range(len(d["time"])):
+                    temp_map[d["time"][i]] = {
+                        "temp_max_c":      d["temperature_2m_max"][i],
+                        "temp_min_c":      d["temperature_2m_min"][i],
+                        "precipitation_mm":d["precipitation_sum"][i] or 0,
+                        "weather_code":    d["weathercode"][i],
+                    }
+        # ── Forecast (today + future) ─────────────────────────────────────────
+        fcst_start = max(date.fromisoformat(start_str), today)
+        if fcst_start <= date.fromisoformat(end_str):
+            days = (date.fromisoformat(end_str) - today).days + 3
+            r2 = requests.get("https://api.open-meteo.com/v1/forecast", params={
+                "latitude": coords["lat"], "longitude": coords["lon"],
+                "daily": ["temperature_2m_max","temperature_2m_min",
+                          "precipitation_sum","weathercode",
+                          "precipitation_probability_max"],
+                "forecast_days": min(days, 16),
+                "timezone": "Asia/Kolkata"}, timeout=10)
+            if r2.status_code == 200:
+                d2 = r2.json()["daily"]
+                for i in range(len(d2["time"])):
+                    precip = d2["precipitation_sum"][i]
+                    rain_prob = d2["precipitation_probability_max"][i] or 0
+                    # If precipitation_sum is None (common for forecast),
+                    # estimate from probability: >60% → ~8mm, >30% → ~3mm, else 0
+                    if precip is None:
+                        if rain_prob >= 60:   precip = 10.0
+                        elif rain_prob >= 40: precip = 5.0
+                        elif rain_prob >= 25: precip = 2.0
+                        else:                precip = 0.0
+                    temp_map[d2["time"][i]] = {
+                        "temp_max_c":           d2["temperature_2m_max"][i],
+                        "temp_min_c":           d2["temperature_2m_min"][i],
+                        "precipitation_mm":     precip,
+                        "weather_code":         d2["weathercode"][i],
+                        "rain_probability_pct": rain_prob,
+                    }
+    except Exception as e:
+        pass
     return temp_map
 
 with st.spinner("Calculating impact for all 6 restaurant types..."):
