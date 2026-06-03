@@ -202,8 +202,8 @@ with st.sidebar:
     IST = pytz.timezone("Asia/Kolkata")
     today = datetime.now(IST).date()
     c1,c2 = st.columns(2)
-    with c1: start_date = st.date_input("From", today)
-    with c2: end_date   = st.date_input("To",   today+timedelta(days=30))
+    with c1: start_date = st.date_input("From", today, format="DD MMMM, YYYY")
+    with c2: end_date   = st.date_input("To",   today+timedelta(days=30), format="DD MMMM, YYYY")
     st.markdown("---")
     st.markdown("### 🏷️ Filter Events")
     cats = ["All","Festival","Government Holiday","Sports Event",
