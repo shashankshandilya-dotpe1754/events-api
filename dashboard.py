@@ -353,7 +353,7 @@ def _all_factors(ev):
     cm  = _EV_MULT.get(cat,{}) if _RT_AVAIL else {}
     sm  = cm.get(sub, cm.get("*",{}))
     rt_badges = []
-    for rt,ico in [("QSR","🍔"),("Dine-in","🍽️"),("PBCL","🍺")]:
+    for rt,ico in [("QSR","🍔"),("Fine Dining","🍽️"),("PBCL","🍺"),("Casual Dining","🥘"),("Cloud Kitchen","📦"),("Cafe","☕")]:
         pct = round((sm.get(rt,1.0)-1)*100)
         if pct>0:   txt,bg,fc = f"{ico} {rt} ↑+{pct}%","rgba(67,160,71,.25)","#81C784"
         elif pct<0: txt,bg,fc = f"{ico} {rt} ↓{pct}%","rgba(239,83,80,.25)","#EF9A9A"
