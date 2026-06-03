@@ -184,34 +184,55 @@ EVENT_MULTIPLIERS = {
 # ── Weather multipliers ────────────────────────────────────────────────────────
 def weather_multiplier(rest_type: str, temp_max: float, precip_mm: float,
                        weather_code: int) -> tuple:
+    """
+    Returns (multiplier, reason_str).
+    Cloud Kitchen benefits from rain (delivery up).
+    Fine Dining / Casual Dining / PBCL hurt by rain (dine-in drops).
+    QSR and Cafe are partially insulated (delivery offsets footfall loss).
+    """
     mult = 1.0; reason = []
+
+    # ── Temperature ──────────────────────────────────────────────────────────
     if temp_max is not None:
         if temp_max >= 44:
-            m = {"QSR":0.75,"Fine Dining":0.58,"PBCL":0.62,
-                 "Casual Dining":0.63,"Cloud Kitchen":0.85,"Cafe":0.68}[rest_type]
-            mult *= m; reason.append(f"Extreme heat {temp_max}°C")
+            m = {"QSR":0.72,"Fine Dining":0.55,"PBCL":0.60,
+                 "Casual Dining":0.62,"Cloud Kitchen":0.82,"Cafe":0.68}[rest_type]
+            mult *= m; reason.append(f"Extreme heat {temp_max:.0f}°C — severe footfall suppression")
         elif temp_max >= 40:
-            m = {"QSR":0.88,"Fine Dining":0.75,"PBCL":0.80,
-                 "Casual Dining":0.80,"Cloud Kitchen":0.92,"Cafe":0.82}[rest_type]
-            mult *= m; reason.append(f"High heat {temp_max}°C")
+            m = {"QSR":0.85,"Fine Dining":0.72,"PBCL":0.78,
+                 "Casual Dining":0.76,"Cloud Kitchen":0.90,"Cafe":0.82}[rest_type]
+            mult *= m; reason.append(f"High heat {temp_max:.0f}°C — outdoor footfall drops")
         elif temp_max <= 15:
             m = {"QSR":1.05,"Fine Dining":1.15,"PBCL":1.10,
-                 "Casual Dining":1.12,"Cloud Kitchen":1.08,"Cafe":1.18}[rest_type]
-            mult *= m; reason.append(f"Cool {temp_max}°C — cosy dining")
-    if precip_mm is not None:
+                 "Casual Dining":1.12,"Cloud Kitchen":1.08,"Cafe":1.20}[rest_type]
+            mult *= m; reason.append(f"Cool weather {temp_max:.0f}°C — cosy dining boost")
+
+    # ── Precipitation ─────────────────────────────────────────────────────────
+    if precip_mm is not None and precip_mm > 0:
         if precip_mm >= 20:
-            m = {"QSR":1.15,"Fine Dining":0.50,"PBCL":0.55,
-                 "Casual Dining":0.60,"Cloud Kitchen":1.40,"Cafe":0.72}[rest_type]
-            mult *= m; reason.append(f"Heavy rain {precip_mm}mm")
-        elif precip_mm >= 5:
-            m = {"QSR":1.08,"Fine Dining":0.78,"PBCL":0.72,
-                 "Casual Dining":0.80,"Cloud Kitchen":1.20,"Cafe":0.85}[rest_type]
-            mult *= m; reason.append(f"Rain {precip_mm}mm")
-    if weather_code in (95,96,99):
-        m = {"QSR":1.10,"Fine Dining":0.42,"PBCL":0.38,
-             "Casual Dining":0.50,"Cloud Kitchen":1.35,"Cafe":0.55}[rest_type]
-        mult *= m; reason.append("Thunderstorm")
-    return round(mult, 3), "; ".join(reason) if reason else "Normal weather"
+            m = {"QSR":1.18,"Fine Dining":0.45,"PBCL":0.48,
+                 "Casual Dining":0.52,"Cloud Kitchen":1.55,"Cafe":0.68}[rest_type]
+            mult *= m
+            reason.append(f"Heavy rain {precip_mm:.0f}mm — Cloud Kitchen↑↑ delivery↑ dine-in↓↓")
+        elif precip_mm >= 8:
+            m = {"QSR":1.12,"Fine Dining":0.60,"PBCL":0.62,
+                 "Casual Dining":0.65,"Cloud Kitchen":1.40,"Cafe":0.78}[rest_type]
+            mult *= m
+            reason.append(f"Moderate rain {precip_mm:.0f}mm — Cloud Kitchen↑ delivery↑ dine-in↓")
+        elif precip_mm >= 3:
+            m = {"QSR":1.06,"Fine Dining":0.80,"PBCL":0.78,
+                 "Casual Dining":0.82,"Cloud Kitchen":1.22,"Cafe":0.88}[rest_type]
+            mult *= m
+            reason.append(f"Light rain/drizzle {precip_mm:.0f}mm — slight delivery lift, dine-in dip")
+
+    # ── Severe weather codes ──────────────────────────────────────────────────
+    if weather_code in (95, 96, 99):
+        m = {"QSR":1.15,"Fine Dining":0.40,"PBCL":0.38,
+             "Casual Dining":0.45,"Cloud Kitchen":1.50,"Cafe":0.55}[rest_type]
+        mult *= m
+        reason.append("Thunderstorm — delivery spike, dine-in/PBCL severe crash")
+
+    return round(mult, 3), "; ".join(reason) if reason else "Normal weather — no significant weather impact"
 
 
 def get_base(rest_type: str, weekday: int) -> float:
