@@ -401,7 +401,7 @@ def _all_factors(ev):
         names=", ".join(days_names[d.weekday()] for d in wkdays[:3])+("…" if len(wkdays)>3 else "")
         day_badges.append(_factor_badge(f"📆 {len(wkdays)} Weekday{'s' if len(wkdays)>1 else ''} ({names}) — normal base","rgba(21,101,192,.2)","#90CAF9"))
     if wkends:
-        names=", ".join(days_names[d.weekday()] for d in wkends)
+        names=", ".join(days_names[d.weekday()] for d in wkends[:3])+("…" if len(wkends)>3 else "")
         day_badges.append(_factor_badge(f"🎉 {len(wkends)} Weekend day{'s' if len(wkends)>1 else ''} ({names}) — higher base demand","rgba(255,143,0,.25)","#FFD54F"))
     if not day_badges:
         day_badges.append(_factor_badge("📅 Single day event","rgba(120,144,156,.15)","#78909C"))
